@@ -37,6 +37,8 @@ export function GridEditorToolbar({ model, canvasControls, zoomLabel }: Props) {
     copySelection,
     cutSelection,
     pasteSelection,
+    copySelectionStyle,
+    pasteSelectionStyle,
     duplicateSelection,
     clearSelectionContent,
     selectAllAnchors,
@@ -47,6 +49,7 @@ export function GridEditorToolbar({ model, canvasControls, zoomLabel }: Props) {
     selectEntireRowsInSelectionBounds,
     selectEntireColumnsInSelectionBounds,
     clipboardInfo,
+    styleClipboardInfo,
     showRowColHeaders,
     setShowRowColHeaders,
     hideEditorCellInteriorText,
@@ -105,6 +108,24 @@ export function GridEditorToolbar({ model, canvasControls, zoomLabel }: Props) {
             title="복제 (⌘/Ctrl+D)"
           >
             복제
+          </button>
+          <button
+            type="button"
+            className={tbBtn}
+            disabled={!hasGrid || selCount === 0}
+            onClick={copySelectionStyle}
+            title="디자인만 복사 (⌘/Ctrl+Shift+C)"
+          >
+            디자인
+          </button>
+          <button
+            type="button"
+            className={tbBtn}
+            disabled={!hasGrid || selCount === 0 || !styleClipboardInfo}
+            onClick={pasteSelectionStyle}
+            title="디자인만 붙여넣기 (⌘/Ctrl+Shift+V)"
+          >
+            디자인 붙여
           </button>
         </ToolGroup>
 
@@ -219,7 +240,12 @@ export function GridEditorToolbar({ model, canvasControls, zoomLabel }: Props) {
             클립보드 {clipboardInfo.width}×{clipboardInfo.height}
           </span>
         ) : null}
-        <span className="hidden sm:inline">⌘/Ctrl+Z 되돌리기 · C/V 복사·붙여넣기 · A 전체 · Esc 해제</span>
+        {styleClipboardInfo ? (
+          <span className="rounded-full bg-violet-50 px-2 py-0.5 text-violet-800 dark:bg-violet-950/40 dark:text-violet-300">
+            디자인 {styleClipboardInfo.width}×{styleClipboardInfo.height}
+          </span>
+        ) : null}
+        <span className="hidden sm:inline">⌘/Ctrl+Shift+C/V 디자인 · C/V 복사·붙여넣기</span>
       </div>
     </div>
   );

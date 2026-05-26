@@ -124,6 +124,12 @@ export function displayLabel(
   return `${c.col + 1},${c.row + 1}`;
 }
 
+/** 저장본·조회 화면 — 칸 이름을 우선 표시하고, 없을 때만 매대 코드 등을 사용 */
+export function snapshotDisplayLabel(c: EditorGridCell): string {
+  if (c.cellName.trim()) return c.cellName.trim().slice(0, 24);
+  return displayLabel(c, "applied");
+}
+
 /** Konva `dash` / Fabric `strokeDashArray` — `solid`는 `undefined` */
 export function dashForBorderLineStyle(
   style: BorderLineStyle,

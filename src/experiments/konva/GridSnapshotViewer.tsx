@@ -127,7 +127,7 @@ export default function GridSnapshotViewer({
       </div>
       <div className="mt-2 flex shrink-0 flex-wrap items-center gap-2">
         <p className="text-[10px] text-zinc-500">
-          휠: 확대·축소 · 끌면 화면 이동, 짧게 누르면 칸 선택 · 아래 박스 안만 반응 (매대 코드 예: A1, C2, R1, NB1)
+          휠: 확대·축소 · 끌면 화면 이동, 짧게 누르면 칸 선택 · 아래 박스 안만 반응 · 칸 이름으로 표시
         </p>
       </div>
       {parseError && <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-400">{parseError}</p>}

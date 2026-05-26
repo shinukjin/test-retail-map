@@ -12,13 +12,13 @@ import {
   cellInnerTextBox,
   cellShowsXDecoration,
   clamp,
-  displayLabel,
   fillForCell,
   GRID_TEXT_LINE_HEIGHT,
   groupStyleForCell,
   konvaTextBoxForVerticalAlign,
   PAD,
   SELECTION_OVERLAY_FILL,
+  snapshotDisplayLabel,
   textColorForCell,
 } from "./grid-editor-cell-draw";
 import type { EditorGridSnapshot } from "./grid-snapshot";
@@ -239,8 +239,8 @@ export function GridSnapshotWorldStage({
   }, [viewport.w, viewport.h, worldW, worldH, snapshot]);
 
   return (
-    <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900/80">
-      <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-zinc-200/80 bg-white/90 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-950/90">
+    <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="mb-1.5 flex shrink-0 flex-wrap items-center gap-1">
         <button
           type="button"
           onClick={applyFit}
@@ -266,6 +266,7 @@ export function GridSnapshotWorldStage({
           {(transform.scale * 100).toFixed(0)}%
         </span>
       </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900/80">
       <div ref={viewportRef} className="relative min-h-[200px] w-full flex-1 overflow-hidden">
         <Stage
           ref={stageRef}
@@ -392,7 +393,7 @@ export function GridSnapshotWorldStage({
                 const h = ch * c.rowspan;
                 const g = snapshot.gridStyle;
                 const grp = groupStyleForCell(c, snapshot.groupStyles);
-                const label = displayLabel(c, "applied");
+                const label = snapshotDisplayLabel(c);
                 const fs = clamp(c.fontSize ?? grp?.fontSize ?? g.fontSize, 0, 48);
                 const fc = textColorForCell(c, g, grp);
                 const alignH: TextAlignH = c.alignH ?? grp?.alignH ?? "center";
@@ -436,6 +437,7 @@ export function GridSnapshotWorldStage({
             </Group>
           </Layer>
         </Stage>
+      </div>
       </div>
     </div>
   );

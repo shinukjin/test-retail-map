@@ -4,13 +4,14 @@ import { useCallback, useRef, useState } from "react";
 import type { FloorPlanRef, ShelfLayout } from "@/domain/types";
 import type { FloorPlanSnapshot } from "@/domain/floor-plan-snapshot";
 import {
-  FLOOR_PLAN_SNAPSHOT_STORAGE_KEY,
   loadFloorPlanSnapshotFromStorage,
   parseFloorPlanSnapshot,
   saveFloorPlanSnapshotToStorage,
   snapshotToJsonString,
 } from "@/domain/floor-plan-snapshot";
 import { getFileKind, readFloorPlanFile, readPdfFile } from "@/lib/upload-floor-plan";
+import { subdivideShelfLayout } from "@/lib/shelf-subdivide";
+import type { SubdivideEntry } from "@/lib/zone-subdivide-utils";
 
 export type FloorImportStatus = "idle" | "uploading" | "converting" | "analyzing" | "done" | "error";
 
@@ -52,6 +53,7 @@ export type FloorImportModel = {
   saveJson: () => void;
   importFromJson: (json: string) => boolean;
   loadFromStorage: () => void;
+  subdivideShelf: (id: string, subdivCols: number, subdivRows: number, entries: SubdivideEntry[]) => void;
 };
 
 export function useFloorImportModel(): FloorImportModel {
@@ -71,12 +73,32 @@ export function useFloorImportModel(): FloorImportModel {
   const futureRef = useRef<HistoryEntry[]>([]);
   const floorPlanRef = useRef<FloorPlanRef | null>(null);
   const pdfFileRef = useRef<File | null>(null);
+  const [historyAvailability, setHistoryAvailability] = useState({
+    canUndo: false,
+    canRedo: false,
+  });
+
+  const syncHistoryAvailability = useCallback(() => {
+    setHistoryAvailability({
+      canUndo: historyRef.current.length > 0,
+      canRedo: futureRef.current.length > 0,
+    });
+  }, []);
 
   const pushHistory = useCallback((current: ShelfLayout[]) => {
     historyRef.current.push({ shelves: current.map((s) => ({ ...s })) });
     if (historyRef.current.length > MAX_HISTORY) historyRef.current.shift();
     futureRef.current = [];
-  }, []);
+    syncHistoryAvailability();
+  }, [syncHistoryAvailability]);
+
+  const autoSave = useCallback(
+    (fp: FloorPlanRef, sh: ShelfLayout[], meta?: FloorPlanSnapshot["analysisMeta"]) => {
+      const snap: FloorPlanSnapshot = { version: 2, floorPlan: fp, shelves: sh, ...(meta ? { analysisMeta: meta } : {}) };
+      saveFloorPlanSnapshotToStorage(snap);
+    },
+    [],
+  );
 
   const setShelves = useCallback(
     (next: ShelfLayout[], recordHistory = true, current?: ShelfLayout[]) => {
@@ -94,10 +116,11 @@ export function useFloorImportModel(): FloorImportModel {
     _setShelves([]);
     historyRef.current = [];
     futureRef.current = [];
+    syncHistoryAvailability();
     setSelectedId(null);
     setAnalysisMeta(undefined);
     setStatus("idle");
-  }, []);
+  }, [syncHistoryAvailability]);
 
   const uploadImage = useCallback(async (file: File) => {
     setStatus("uploading");
@@ -200,7 +223,7 @@ export function useFloorImportModel(): FloorImportModel {
       setErrorMessage(e instanceof Error ? e.message : "분석 오류");
       setStatus("error");
     }
-  }, [floorPlan, setShelves, aiProvider]);
+  }, [autoSave, floorPlan, setShelves, aiProvider]);
 
   const generateSvgWithAI = useCallback(async () => {
     const fp = floorPlanRef.current ?? floorPlan;
@@ -232,11 +255,6 @@ export function useFloorImportModel(): FloorImportModel {
     }
   }, [floorPlan]);
 
-  const autoSave = (fp: FloorPlanRef, sh: ShelfLayout[], meta?: FloorPlanSnapshot["analysisMeta"]) => {
-    const snap: FloorPlanSnapshot = { version: 2, floorPlan: fp, shelves: sh, ...(meta ? { analysisMeta: meta } : {}) };
-    saveFloorPlanSnapshotToStorage(snap);
-  };
-
   const selectShelf = useCallback((id: string | null) => setSelectedId(id), []);
 
   const updateShelf = useCallback(
@@ -249,7 +267,7 @@ export function useFloorImportModel(): FloorImportModel {
         return next;
       });
     },
-    [pushHistory, analysisMeta],
+    [autoSave, pushHistory, analysisMeta],
   );
 
   const addShelf = useCallback(
@@ -262,7 +280,7 @@ export function useFloorImportModel(): FloorImportModel {
         return next;
       });
     },
-    [pushHistory, analysisMeta],
+    [autoSave, pushHistory, analysisMeta],
   );
 
   const deleteShelf = useCallback(
@@ -276,7 +294,7 @@ export function useFloorImportModel(): FloorImportModel {
         return next;
       });
     },
-    [pushHistory, analysisMeta, selectedId],
+    [autoSave, pushHistory, analysisMeta, selectedId],
   );
 
   const undo = useCallback(() => {
@@ -284,18 +302,20 @@ export function useFloorImportModel(): FloorImportModel {
       const entry = historyRef.current.pop();
       if (!entry) return prev;
       futureRef.current.push({ shelves: prev.map((s) => ({ ...s })) });
+      syncHistoryAvailability();
       return entry.shelves;
     });
-  }, []);
+  }, [syncHistoryAvailability]);
 
   const redo = useCallback(() => {
     _setShelves((prev) => {
       const entry = futureRef.current.pop();
       if (!entry) return prev;
       historyRef.current.push({ shelves: prev.map((s) => ({ ...s })) });
+      syncHistoryAvailability();
       return entry.shelves;
     });
-  }, []);
+  }, [syncHistoryAvailability]);
 
   const saveJson = useCallback(() => {
     const fp = floorPlanRef.current ?? floorPlan;
@@ -325,6 +345,7 @@ export function useFloorImportModel(): FloorImportModel {
         _setShelves(parsed.shelves);
         historyRef.current = [];
         futureRef.current = [];
+        syncHistoryAvailability();
         setSelectedId(null);
         setAnalysisMeta(parsed.analysisMeta);
         setStatus("done");
@@ -334,7 +355,7 @@ export function useFloorImportModel(): FloorImportModel {
         return false;
       }
     },
-    [],
+    [syncHistoryAvailability],
   );
 
   const loadFromStorage = useCallback(() => {
@@ -345,10 +366,28 @@ export function useFloorImportModel(): FloorImportModel {
     _setShelves(snap.shelves);
     historyRef.current = [];
     futureRef.current = [];
+    syncHistoryAvailability();
     setSelectedId(null);
     setAnalysisMeta(snap.analysisMeta);
     setStatus("done");
-  }, []);
+  }, [syncHistoryAvailability]);
+
+  const subdivideShelf = useCallback(
+    (id: string, subdivCols: number, subdivRows: number, entries: SubdivideEntry[]) => {
+      _setShelves((prev) => {
+        const target = prev.find((s) => s.id === id);
+        if (!target) return prev;
+        pushHistory(prev);
+        const children = subdivideShelfLayout(target, subdivCols, subdivRows, entries);
+        const next = prev.filter((s) => s.id !== id).concat(children);
+        const fp = floorPlanRef.current;
+        if (fp) autoSave(fp, next, analysisMeta);
+        if (children[0]) setSelectedId(children[0].id);
+        return next;
+      });
+    },
+    [autoSave, pushHistory, analysisMeta],
+  );
 
   return {
     floorPlan,
@@ -357,8 +396,8 @@ export function useFloorImportModel(): FloorImportModel {
     status,
     errorMessage,
     analysisMeta,
-    canUndo: historyRef.current.length > 0,
-    canRedo: futureRef.current.length > 0,
+    canUndo: historyAvailability.canUndo,
+    canRedo: historyAvailability.canRedo,
     pdfTotalPages,
     pdfCurrentPage,
     aiProvider,
@@ -379,5 +418,6 @@ export function useFloorImportModel(): FloorImportModel {
     saveJson,
     importFromJson,
     loadFromStorage,
+    subdivideShelf,
   };
 }

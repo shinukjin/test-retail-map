@@ -28,7 +28,7 @@ export default function RootLayout({
       lang="ko"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-dvh w-full min-w-0 flex-col">
+      <body className="flex h-dvh min-h-0 w-full min-w-0 flex-col overflow-hidden">
         <AppTopNav />
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</main>
       </body>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ShelfKind, ShelfLayout } from "@/domain/types";
 import { getSalesForShelfCode, loadSalesByShelfCode } from "@/lib/grid-sales-api";
 import type { FloorImportModel } from "./useFloorImportModel";
+import { ZoneSubdivideForm } from "@/experiments/_shared/ZoneSubdivideForm";
 
 const KIND_LABELS: Record<ShelfKind, string> = {
   gondola: "곤돌라",
@@ -68,6 +69,7 @@ export function FloorImportSidePanel({
     saveJson,
     importFromJson,
     loadFromStorage,
+    subdivideShelf,
   } = model;
 
   const [step, setStep] = useState<StepId>(1);
@@ -619,6 +621,27 @@ export function FloorImportSidePanel({
                         ))}
                       </div>
                     </Field>
+                    <ZoneSubdivideForm
+                      title="영역 세분화"
+                      parent={{
+                        code: selected.sectionCode ?? "",
+                        label: selected.label,
+                        bayCode: selected.bayCode ?? "",
+                      }}
+                      spanCols={1}
+                      spanRows={1}
+                      enforceSpanLimit={false}
+                      maxSubdivCols={8}
+                      maxSubdivRows={8}
+                      labels={{
+                        code: "하위 구역 코드",
+                        label: "영역 이름",
+                        bay: "매대 코드",
+                      }}
+                      onApply={(subdivCols, subdivRows, entries) =>
+                        subdivideShelf(selected.id, subdivCols, subdivRows, entries)
+                      }
+                    />
                     <button
                       type="button"
                       onClick={() => deleteShelf(selected.id)}

@@ -7,7 +7,6 @@ import {
   DEFAULT_BORDER_COLOR,
   DEFAULT_BORDER_WIDTH,
   DEFAULT_BORDER_SIDES,
-  normalizeColorHex,
 } from "@/experiments/konva/grid-editor-cell-draw";
 import type { BorderSides, EditorGridStyle } from "@/experiments/konva/grid-editor-types";
 import type { GridEditorModel } from "./useGridEditorModel";
@@ -37,7 +36,11 @@ const btnLine =
 const btnMini =
   "rounded border border-zinc-300 bg-white px-1 py-0.5 text-[9px] text-zinc-700 transition hover:bg-zinc-50 active:scale-[0.98] dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800";
 
-type Props = { model: GridEditorModel };
+type Props = {
+  model: GridEditorModel;
+  /** true면 저장·불러오기 버튼을 숨김(외부 툴바에서 렌더) */
+  hidePersistenceControls?: boolean;
+};
 
 /** 테두리가 꺼져 있으면 UI는 모두 해제로, 켜져 있으면 저장된 면(없으면 사면) */
 function globalBorderSidesForDisplay(g: EditorGridStyle): BorderSides {
@@ -149,7 +152,7 @@ function BulkGroupPanel({
   );
 }
 
-export function GridEditorSidePanel({ model }: Props) {
+export function GridEditorSidePanel({ model, hidePersistenceControls = false }: Props) {
   const {
     colsIn,
     setColsIn,
@@ -391,38 +394,40 @@ export function GridEditorSidePanel({ model }: Props) {
             <button type="button" onClick={buildGrid} className={btnSolid}>
               생성
             </button>
-            {hasGrid && (
+            {!hidePersistenceControls && hasGrid && (
               <button type="button" onClick={saveGridJson} className={btnLine}>
                 저장
               </button>
             )}
           </div>
-          <div className="flex flex-wrap gap-1 border-t border-zinc-100 pt-1 dark:border-zinc-800">
-            <button type="button" onClick={loadFromLocalStorage} className={btnLine}>
-              저장 불러오기
-            </button>
-            {alternateStorageImportKey ? (
-              <button
-                type="button"
-                onClick={loadFromAlternateLocalStorage}
-                className={btnLine}
-                title="다른 편집기에서 localStorage로 저장한 마지막 그리드"
-              >
-                다른 편집기
+          {!hidePersistenceControls && (
+            <div className="flex flex-wrap gap-1 border-t border-zinc-100 pt-1 dark:border-zinc-800">
+              <button type="button" onClick={loadFromLocalStorage} className={btnLine}>
+                저장 불러오기
               </button>
-            ) : null}
-            <input
-              ref={importFileRef}
-              type="file"
-              accept="application/json,.json"
-              className="sr-only"
-              aria-label="JSON 파일에서 그리드 불러오기"
-              onChange={onImportJsonFile}
-            />
-            <button type="button" onClick={() => importFileRef.current?.click()} className={btnLine}>
-              JSON 파일…
-            </button>
-          </div>
+              {alternateStorageImportKey ? (
+                <button
+                  type="button"
+                  onClick={loadFromAlternateLocalStorage}
+                  className={btnLine}
+                  title="다른 편집기에서 localStorage로 저장한 마지막 그리드"
+                >
+                  다른 편집기
+                </button>
+              ) : null}
+              <input
+                ref={importFileRef}
+                type="file"
+                accept="application/json,.json"
+                className="sr-only"
+                aria-label="JSON 파일에서 그리드 불러오기"
+                onChange={onImportJsonFile}
+              />
+              <button type="button" onClick={() => importFileRef.current?.click()} className={btnLine}>
+                JSON 파일…
+              </button>
+            </div>
+          )}
           <label className="flex cursor-pointer items-center gap-1.5 text-[9px] text-zinc-600 dark:text-zinc-400">
             <input
               type="checkbox"

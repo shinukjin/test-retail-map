@@ -40,6 +40,19 @@ export function useGridEditorKeyboard(model: GridEditorModel) {
         return;
       }
 
+      if (mod && e.shiftKey) {
+        if (e.key === "c" || e.key === "C") {
+          e.preventDefault();
+          model.copySelectionStyle();
+          return;
+        }
+        if (e.key === "v" || e.key === "V") {
+          e.preventDefault();
+          model.pasteSelectionStyle();
+          return;
+        }
+      }
+
       if (mod) {
         if (e.key === "c" || e.key === "C") {
           e.preventDefault();

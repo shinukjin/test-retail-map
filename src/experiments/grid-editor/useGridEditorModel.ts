@@ -11,6 +11,8 @@ import {
   type EditorGroupStyle,
 } from "@/experiments/konva/grid-editor-types";
 import { applyCellMerge } from "@/experiments/konva/grid-merge";
+import { applyGridSubdivide } from "@/experiments/konva/grid-subdivide";
+import type { SubdivideEntry } from "@/lib/zone-subdivide-utils";
 import {
   clamp,
   DEFAULT_BORDER_WIDTH,
@@ -30,10 +32,14 @@ import {
   type GridHistorySnapshot,
 } from "./grid-history-utils";
 import {
+  applyStyleClipboardToSelection,
   buildClipboardFromSelection,
+  buildStyleClipboardFromSelection,
   clearSelectionRegion,
+  moveSelectionByDelta as moveSelectionRegionByDelta,
   pasteClipboardAt,
   type GridSelectionClipboard,
+  type GridStyleClipboard,
 } from "./grid-clipboard-utils";
 import {
   allAnchorKeys,
@@ -45,6 +51,12 @@ import {
   shrinkSelectionToInnerRect,
   solidAnchorRectangleForMerge,
 } from "./grid-selection-utils";
+import {
+  buildResizePreview,
+  mergeSizeUnchanged,
+  resolveResizeSpec,
+  type ResizeHandle,
+} from "./grid-resize-utils";
 
 export type GridPersistenceConfig = {
   storageKey: string;
@@ -101,7 +113,11 @@ export function useGridEditorModel({
   const colsRef = useRef(cols);
   const rowsRef = useRef(rows);
   const clipboardRef = useRef<GridSelectionClipboard | null>(null);
+  const styleClipboardRef = useRef<GridStyleClipboard | null>(null);
   const [clipboardInfo, setClipboardInfo] = useState<{ width: number; height: number } | null>(
+    null,
+  );
+  const [styleClipboardInfo, setStyleClipboardInfo] = useState<{ width: number; height: number } | null>(
     null,
   );
 
@@ -111,7 +127,17 @@ export function useGridEditorModel({
   const isHistoryRestoreRef = useRef(false);
   const historyEditSessionRef = useRef(false);
   const historyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [historyTick, setHistoryTick] = useState(0);
+  const [historyAvailability, setHistoryAvailability] = useState({
+    canUndo: false,
+    canRedo: false,
+  });
+
+  const syncHistoryAvailability = useCallback(() => {
+    setHistoryAvailability({
+      canUndo: undoStackRef.current.length > 0,
+      canRedo: redoStackRef.current.length > 0,
+    });
+  }, []);
 
   useLayoutEffect(() => {
     gridStyleRef.current = gridStyle;
@@ -169,8 +195,8 @@ export function useGridEditorModel({
     undoStackRef.current.push(captureSnapshot());
     if (undoStackRef.current.length > MAX_HISTORY) undoStackRef.current.shift();
     redoStackRef.current = [];
-    setHistoryTick((t) => t + 1);
-  }, [captureSnapshot]);
+    syncHistoryAvailability();
+  }, [captureSnapshot, syncHistoryAvailability]);
 
   const scheduleHistoryPush = useCallback(() => {
     if (isHistoryRestoreRef.current || colsRef.current <= 0) return;
@@ -216,8 +242,8 @@ export function useGridEditorModel({
     const prev = undoStackRef.current.pop()!;
     restoreSnapshot(prev);
     setError(null);
-    setHistoryTick((t) => t + 1);
-  }, [captureSnapshot, restoreSnapshot]);
+    syncHistoryAvailability();
+  }, [captureSnapshot, restoreSnapshot, syncHistoryAvailability]);
 
   const redo = useCallback(() => {
     if (redoStackRef.current.length === 0) return;
@@ -230,11 +256,11 @@ export function useGridEditorModel({
     const next = redoStackRef.current.pop()!;
     restoreSnapshot(next);
     setError(null);
-    setHistoryTick((t) => t + 1);
-  }, [captureSnapshot, restoreSnapshot]);
+    syncHistoryAvailability();
+  }, [captureSnapshot, restoreSnapshot, syncHistoryAvailability]);
 
-  const canUndo = historyTick >= 0 && undoStackRef.current.length > 0;
-  const canRedo = historyTick >= 0 && redoStackRef.current.length > 0;
+  const canUndo = historyAvailability.canUndo;
+  const canRedo = historyAvailability.canRedo;
 
   const selectCell = useCallback(
     (key: string | null, snapshot?: Map<string, EditorGridCell>, opts?: GridSelectOptions) => {
@@ -464,6 +490,79 @@ export function useGridEditorModel({
     setMergeRowspanIn("1");
   }, [cols, hasGrid, pushHistoryNow, rows, selectedKeys]);
 
+  const resizeSelectedCell = useCallback(
+    (targetRow: number, targetCol: number, handle: ResizeHandle, keys?: string[]) => {
+      if (!hasGrid) return false;
+      const resizeKeys = keys ?? selectedKeysRef.current;
+      const spec = resolveResizeSpec(resizeKeys, cellsRef.current);
+      if (!spec) return false;
+
+      const preview = buildResizePreview(
+        spec,
+        targetRow,
+        targetCol,
+        handle,
+        cellsRef.current,
+        colsRef.current,
+        rowsRef.current,
+      );
+      if (!preview.valid || mergeSizeUnchanged(spec, preview)) return false;
+
+      const colspan = preview.targetBounds.c1 - preview.targetBounds.c0 + 1;
+      const rowspan = preview.targetBounds.r1 - preview.targetBounds.r0 + 1;
+      const res = applyCellMerge(
+        cellsRef.current,
+        colsRef.current,
+        rowsRef.current,
+        spec.anchorKey,
+        colspan,
+        rowspan,
+      );
+      if (!res.ok) {
+        setError(res.message);
+        return false;
+      }
+      pushHistoryNow();
+      setError(null);
+      setCells(res.cells);
+      setSelectedKeys([spec.anchorKey]);
+      rangeAnchorRef.current = spec.anchorKey;
+      setMergeColspanIn(String(colspan));
+      setMergeRowspanIn(String(rowspan));
+      return true;
+    },
+    [hasGrid, pushHistoryNow],
+  );
+
+  const subdivideSelectedZone = useCallback(
+    (subdivCols: number, subdivRows: number, entries: SubdivideEntry[]) => {
+      if (selectedKeys.length !== 1 || !hasGrid) return;
+      const anchorKey = selectedKeys[0]!;
+      pushHistoryNow();
+      const res = applyGridSubdivide(
+        cellsRef.current,
+        groupStylesRef.current,
+        cols,
+        rows,
+        anchorKey,
+        subdivCols,
+        subdivRows,
+        entries,
+      );
+      if (!res.ok) {
+        setError(res.message);
+        return;
+      }
+      setError(null);
+      setCells(res.cells);
+      setGroupStyles(res.groupStyles);
+      setSelectedKeys([]);
+      setMergeColspanIn("1");
+      setMergeRowspanIn("1");
+    },
+    [cols, hasGrid, pushHistoryNow, rows, selectedKeys],
+  );
+
   const applySnapshotToEditor = useCallback(
     (snap: EditorGridSnapshot, recordHistory = true) => {
       if (recordHistory && colsRef.current > 0) pushHistoryNow();
@@ -633,6 +732,20 @@ export function useGridEditorModel({
     setError(null);
   }, [hasGrid]);
 
+  const copySelectionStyle = useCallback(() => {
+    if (!hasGrid || selectedKeysRef.current.length === 0) return;
+    const clip = buildStyleClipboardFromSelection(
+      selectedKeysRef.current,
+      cellsRef.current,
+      groupStylesRef.current,
+      gridStyleRef.current,
+    );
+    if (!clip) return;
+    styleClipboardRef.current = clip;
+    setStyleClipboardInfo({ width: clip.width, height: clip.height });
+    setError(null);
+  }, [hasGrid]);
+
   const cutSelection = useCallback(() => {
     if (!hasGrid || selectedKeysRef.current.length === 0) return;
     const keys = selectedKeysRef.current;
@@ -681,6 +794,60 @@ export function useGridEditorModel({
     setSelectedKeys(res.pastedKeys);
     rangeAnchorRef.current = res.pastedKeys[res.pastedKeys.length - 1] ?? null;
   }, [hasGrid, pushHistoryNow]);
+
+  const pasteSelectionStyle = useCallback(() => {
+    const clip = styleClipboardRef.current;
+    if (!clip || !hasGrid) {
+      if (hasGrid) setError("복사된 디자인이 없습니다. 먼저 ⌘/Ctrl+Shift+C로 디자인을 복사하세요.");
+      return;
+    }
+    const keys = selectedKeysRef.current;
+    if (keys.length === 0) {
+      setError("디자인을 붙여넣을 칸을 선택하세요.");
+      return;
+    }
+    const res = applyStyleClipboardToSelection(clip, keys, cellsRef.current);
+    if (!res.ok) {
+      setError(res.message);
+      return;
+    }
+    pushHistoryNow();
+    setError(null);
+    setCells(res.cells);
+  }, [hasGrid, pushHistoryNow]);
+
+  const moveSelectionByDelta = useCallback(
+    (deltaRow: number, deltaCol: number, keys?: string[]) => {
+      if (!hasGrid) return false;
+      const moveKeys = keys ?? selectedKeysRef.current;
+      if (moveKeys.length === 0) return false;
+      if (deltaRow === 0 && deltaCol === 0) return false;
+
+      const res = moveSelectionRegionByDelta(
+        moveKeys,
+        cellsRef.current,
+        groupStylesRef.current,
+        colsRef.current,
+        rowsRef.current,
+        deltaRow,
+        deltaCol,
+      );
+      if (!res.ok) {
+        if (res.message) setError(res.message);
+        return false;
+      }
+      pushHistoryNow();
+      setError(null);
+      setCells(res.cells);
+      if (Object.keys(res.groupStyles).length > 0) {
+        setGroupStyles((prev) => ({ ...prev, ...res.groupStyles }));
+      }
+      setSelectedKeys(res.pastedKeys);
+      rangeAnchorRef.current = res.pastedKeys[res.pastedKeys.length - 1] ?? null;
+      return true;
+    },
+    [hasGrid, pushHistoryNow],
+  );
 
   const duplicateSelection = useCallback(() => {
     if (!hasGrid || selectedKeysRef.current.length === 0) return;
@@ -876,6 +1043,7 @@ export function useGridEditorModel({
     applyMergeFromInputs,
     applyMergeFromRectSelection,
     unmergeSelected,
+    subdivideSelectedZone,
     stageW,
     stageH,
     saveGridJson,
@@ -894,8 +1062,13 @@ export function useGridEditorModel({
     copySelection,
     cutSelection,
     pasteSelection,
+    pasteSelectionStyle,
     duplicateSelection,
     clipboardInfo,
+    styleClipboardInfo,
+    copySelectionStyle,
+    moveSelectionByDelta,
+    resizeSelectedCell,
     undo,
     redo,
     canUndo,

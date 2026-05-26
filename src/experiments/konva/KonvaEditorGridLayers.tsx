@@ -38,15 +38,26 @@ type FillProps = {
   gridStyle: EditorGridStyle;
   groupStyles: Record<string, EditorGroupStyle>;
   hideCellInteriorText: boolean;
+  isDragSource?: boolean;
 };
 
 const KonvaCellFill = memo(
-  function KonvaCellFill({ cell, cw, ch, gridStyle, groupStyles, hideCellInteriorText }: FillProps) {
+  function KonvaCellFill({ cell, cw, ch, gridStyle, groupStyles, hideCellInteriorText, isDragSource }: FillProps) {
     const key = editorCellKey(cell.row, cell.col);
     const { x, y, w, h } = cellGeom(cell, cw, ch);
     const grp = groupStyleForCell(cell, groupStyles);
     const fill = editorRectFillForCell(cell, gridStyle, grp, hideCellInteriorText);
-    return <Rect name={`cell-${key}`} x={x} y={y} width={w} height={h} fill={fill} />;
+    return (
+      <Rect
+        name={`cell-${key}`}
+        x={x}
+        y={y}
+        width={w}
+        height={h}
+        fill={fill}
+        opacity={isDragSource ? 0.25 : 1}
+      />
+    );
   },
   (a, b) =>
     a.cell === b.cell &&
@@ -54,7 +65,8 @@ const KonvaCellFill = memo(
     a.ch === b.ch &&
     a.gridStyle === b.gridStyle &&
     a.groupStyles === b.groupStyles &&
-    a.hideCellInteriorText === b.hideCellInteriorText,
+    a.hideCellInteriorText === b.hideCellInteriorText &&
+    a.isDragSource === b.isDragSource,
 );
 
 type SelectionProps = {
@@ -255,22 +267,29 @@ export const KonvaGridCellFills = memo(
     gridStyle,
     groupStyles,
     hideCellInteriorText,
-  }: GridBodyProps) {
+    dragSourceKeys,
+  }: Pick<GridBodyProps, "anchors" | "gridStyle" | "groupStyles" | "hideCellInteriorText"> & {
+    dragSourceKeys?: Set<string> | null;
+  }) {
     const cw = gridStyle.cellWidth;
     const ch = gridStyle.cellHeight;
     return (
       <>
-        {anchors.map((cell) => (
-          <KonvaCellFill
-            key={editorCellKey(cell.row, cell.col)}
-            cell={cell}
-            cw={cw}
-            ch={ch}
-            gridStyle={gridStyle}
-            groupStyles={groupStyles}
-            hideCellInteriorText={hideCellInteriorText}
-          />
-        ))}
+        {anchors.map((cell) => {
+          const key = editorCellKey(cell.row, cell.col);
+          return (
+            <KonvaCellFill
+              key={key}
+              cell={cell}
+              cw={cw}
+              ch={ch}
+              gridStyle={gridStyle}
+              groupStyles={groupStyles}
+              hideCellInteriorText={hideCellInteriorText}
+              isDragSource={dragSourceKeys?.has(key) ?? false}
+            />
+          );
+        })}
       </>
     );
   },
@@ -278,7 +297,68 @@ export const KonvaGridCellFills = memo(
     a.anchors === b.anchors &&
     a.gridStyle === b.gridStyle &&
     a.groupStyles === b.groupStyles &&
-    a.hideCellInteriorText === b.hideCellInteriorText,
+    a.hideCellInteriorText === b.hideCellInteriorText &&
+    a.dragSourceKeys === b.dragSourceKeys,
+);
+
+const HANDLE_SIZE = 10;
+
+type ResizeBounds = { r0: number; r1: number; c0: number; c1: number };
+
+function boundsGeom(bounds: ResizeBounds, cw: number, ch: number) {
+  return {
+    x: PAD + bounds.c0 * cw,
+    y: PAD + bounds.r0 * ch,
+    w: (bounds.c1 - bounds.c0 + 1) * cw,
+    h: (bounds.r1 - bounds.r0 + 1) * ch,
+  };
+}
+
+function ResizeHandleDot({
+  name,
+  cx,
+  cy,
+}: {
+  name: string;
+  cx: number;
+  cy: number;
+}) {
+  const half = HANDLE_SIZE / 2;
+  return (
+    <Rect
+      name={name}
+      x={cx - half}
+      y={cy - half}
+      width={HANDLE_SIZE}
+      height={HANDLE_SIZE}
+      fill="#2563eb"
+      stroke="#ffffff"
+      strokeWidth={1.5}
+      cornerRadius={2}
+    />
+  );
+}
+
+export const KonvaGridResizeHandles = memo(
+  function KonvaGridResizeHandles({
+    bounds,
+    gridStyle,
+  }: {
+    bounds: ResizeBounds;
+    gridStyle: EditorGridStyle;
+  }) {
+    const cw = gridStyle.cellWidth;
+    const ch = gridStyle.cellHeight;
+    const { x, y, w, h } = boundsGeom(bounds, cw, ch);
+    return (
+      <>
+        <ResizeHandleDot name="resize-se" cx={x + w} cy={y + h} />
+        <ResizeHandleDot name="resize-e" cx={x + w} cy={y + h / 2} />
+        <ResizeHandleDot name="resize-s" cx={x + w / 2} cy={y + h} />
+      </>
+    );
+  },
+  (a, b) => a.bounds === b.bounds && a.gridStyle === b.gridStyle,
 );
 
 export const KonvaGridSelectionLayer = memo(

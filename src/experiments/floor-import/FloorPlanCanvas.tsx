@@ -8,18 +8,16 @@ import type { FloorImportModel } from "./useFloorImportModel";
 
 /* ─── 이미지 로더 ─── */
 function useFloorImage(url: string): HTMLImageElement | undefined {
-  const [image, setImage] = useState<HTMLImageElement | undefined>(undefined);
+  const [loaded, setLoaded] = useState<{ url: string; image: HTMLImageElement } | null>(null);
   useEffect(() => {
-    if (!url) { setImage(undefined); return; }
-    setImage(undefined);
+    if (!url) return;
     const img = new Image();
-    img.onload = () => setImage(img);
-    img.onerror = () => setImage(undefined);
+    img.onload = () => setLoaded({ url, image: img });
     if (!url.startsWith("data:") && !url.startsWith("blob:")) img.crossOrigin = "anonymous";
     img.src = url;
     return () => { img.onload = null; img.onerror = null; };
   }, [url]);
-  return image;
+  return loaded?.url === url ? loaded.image : undefined;
 }
 
 /* ─── 상수 ─── */
@@ -208,7 +206,9 @@ export function FloorPlanCanvas({ model, onShelfDragEnd, onShelfTransformEnd }: 
     setTransform({ scale, x, y });
   }, [floorPlan, viewport.w, viewport.h]);
 
-  useLayoutEffect(() => { fitToScreen(); }, [floorPlan?.imageUrl, viewport.w, viewport.h]);
+  useLayoutEffect(() => {
+    queueMicrotask(fitToScreen);
+  }, [fitToScreen]);
 
   /* Transformer 연결 */
   useLayoutEffect(() => {

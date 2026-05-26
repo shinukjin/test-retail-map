@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { Canvas, Point, Rect } from "fabric";
 import type { EditorGridCell, EditorGridStyle, EditorGroupStyle } from "@/experiments/konva/grid-editor-types";
 import type { GridSelectOptions } from "@/experiments/grid-editor/useGridEditorModel";
@@ -87,7 +87,7 @@ export const FabricGridCanvas = forwardRef<FabricGridCanvasControls, Props>(func
     selectCellRef.current = selectCell;
   }, [cells, selectCell]);
 
-  const buildSyncContext = (): FabricSyncContext => ({
+  const buildSyncContext = useCallback((): FabricSyncContext => ({
     cols,
     rows,
     stageW,
@@ -100,7 +100,20 @@ export const FabricGridCanvas = forwardRef<FabricGridCanvasControls, Props>(func
     hideCellInteriorText,
     showRowColHeaders,
     labelMode: cellLabelModeProp ?? (interactive ? "editor" : "applied"),
-  });
+  }), [
+    cellLabelModeProp,
+    cells,
+    cols,
+    gridStyle,
+    groupStyles,
+    hideCellInteriorText,
+    interactive,
+    rows,
+    selectedKeys,
+    showRowColHeaders,
+    stageH,
+    stageW,
+  ]);
 
   useEffect(() => {
     const el = canvasElRef.current;
@@ -182,7 +195,7 @@ export const FabricGridCanvas = forwardRef<FabricGridCanvasControls, Props>(func
       }
       canvas.dispose();
     };
-  }, [hasGrid, interactive, onZoomPctChange]);
+  }, [cols, hasGrid, interactive, onZoomPctChange, rows, stageH, stageW]);
 
   useLayoutEffect(() => {
     const runtime = runtimeRef.current;
@@ -235,6 +248,7 @@ export const FabricGridCanvas = forwardRef<FabricGridCanvasControls, Props>(func
     hideCellInteriorText,
     showRowColHeaders,
     cellLabelModeProp,
+    buildSyncContext,
   ]);
 
   const resetView = () => {
